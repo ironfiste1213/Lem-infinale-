@@ -35,5 +35,5 @@ func main() {
 
 		Group := internal.FindBestGroup(Graph.AntCount, Groupsofpaths)
 		fmt.Println("best group len is ", len(Group))
-		internal.SimulateAntsSmart(Graph, Group)
+	//	internal.SimulateAntsSmart(Graph, Group)
 }

@@ -225,7 +225,9 @@ func (g *Graph) Bfs(FirstRound bool) (*Path, []string) {
 			}
 		}
 		for _, neighbor := range current.Links {
-
+			if neighbor.Usedinpath  && neighbor.Parent == g.StartRoom {
+				continue
+			}
 			// Skip if already visited
 			if neighbor.Visited {
 				continue
