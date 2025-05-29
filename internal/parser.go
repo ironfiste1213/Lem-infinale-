@@ -2,297 +2,209 @@ package internal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
-	"os"
+	"io"
 	"strconv"
 	"strings"
+
 )
 
-// ParseInput reads and parses the lem-in input file
-func ParseInput(filename string) (*Graph, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("ERROR: invalid data format, cannot open file: %v", err)
-	}
-	defer file.Close()
+// Various error types for specific parsing errors
+var (
+	ErrEmptyInput        = errors.New("empty input")
+	ErrInvalidAntCount   = errors.New("invalid ant count")
+	ErrMissingStartRoom  = errors.New("missing start room")
+	ErrMissingEndRoom    = errors.New("missing end room")
+	ErrNoPathExists      = errors.New("no valid path exists between start and end")
+	ErrInvalidRoomFormat = errors.New("invalid room format")
+	ErrInvalidLinkFormat = errors.New("invalid link format")
+	ErrDuplicateRoom     = errors.New("duplicate room name")
+	ErrRoomNotFound      = errors.New("referenced room does not exist")
+)
 
-	scanner := bufio.NewScanner(file)
-	graph := &Graph{
-		Rooms:     make(map[string]*Room),
-		Paths:     []*Path{},
+// Parse reads the entire input and constructs an AntFarm object
+func Parser(r io.Reader) (*Graph, error) {
+	scanner := bufio.NewScanner(r)
+	farm := &Graph{
+		Rooms: make(map[string]*Room),
+		File: []string{},
 	}
 
-	// Parse ant count (first line)
+	// First pass: Parse the ant count
 	if !scanner.Scan() {
-		return nil, fmt.Errorf("ERROR: invalid data format, no ant count")
+		return nil, ErrEmptyInput
 	}
-	
-	antCount, err := strconv.Atoi(strings.TrimSpace(scanner.Text()))
+
+	line := scanner.Text()
+	farm.File = append(farm.File, line)
+
+	antCount, err := strconv.Atoi(line)
 	if err != nil || antCount <= 0 {
-		return nil, fmt.Errorf("ERROR: invalid data format, invalid number of ants")
+		return nil, fmt.Errorf("%w: %s", ErrInvalidAntCount, line)
 	}
-	graph.AntCount = antCount
+	farm.AntCount = antCount
 
-	var isStart, isEnd bool
-	var pendingLinks []string
+	// Second pass: Parse rooms and links
+	var expectingStart, expectingEnd bool
+	parsingLinks := false
 
-	// Parse rooms and links
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		
-		// Skip empty lines and comments (unless they're special commands)
-		if line == "" || (strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "##")) {
+		line = scanner.Text()
+		farm.File = append(farm.File, line)
+
+		// Skip comments that aren't commands
+		if strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "##") {
 			continue
 		}
 
-		// Handle special commands
+		// Check for start/end commands
 		if line == "##start" {
-			isStart = true
-			continue
-		} else if line == "##end" {
-			isEnd = true
+			expectingStart = true
 			continue
 		}
-
-		// Check if it's a link (contains '-')
-		if strings.Contains(line, "-") {
-			pendingLinks = append(pendingLinks, line)
+		if line == "##end" {
+			expectingEnd = true
 			continue
 		}
 
-		// Parse room
-		room, err := parseRoom(line, isStart, isEnd)
-		if err != nil {
-			return nil, err
+		// If we find a link definition, switch to parsing links
+		if strings.Contains(line, "-") && !parsingLinks {
+			parsingLinks = true
 		}
 
-		// Check for duplicate rooms
-		if _, exists := graph.Rooms[room.Id]; exists {
-			return nil, fmt.Errorf("ERROR: invalid data format, duplicate room: %s", room.Id)
-		}
-
-		graph.Rooms[room.Id] = room
-
-		// Set start/end room references
-		if room.IsStart {
-			if graph.StartRoom != nil {
-				return nil, fmt.Errorf("ERROR: invalid data format, multiple start rooms")
+		if parsingLinks {
+			// Parse links between rooms
+			if err := parseLink(farm, line); err != nil {
+				return nil, err
 			}
-			graph.StartRoom = room
-		}
-		if room.IsEnd {
-			if graph.EndRoom != nil {
-				return nil, fmt.Errorf("ERROR: invalid data format, multiple end rooms")
+		} else {
+			// Parse room definitions
+			if err := parseRoom(farm, line, expectingStart, expectingEnd); err != nil {
+				return nil, err
 			}
-			graph.EndRoom = room
+			expectingStart = false
+			expectingEnd = false
 		}
-
-		// Reset flags
-		isStart = false
-		isEnd = false
 	}
 
-	// Validate that we have start and end rooms
-	if graph.StartRoom == nil {
-		return nil, fmt.Errorf("ERROR: invalid data format, no start room found")
-	}
-	if graph.EndRoom == nil {
-		return nil, fmt.Errorf("ERROR: invalid data format, no end room found")
-	}
-
-	// Process links
-	err = processLinks(graph, pendingLinks)
-	if err != nil {
+	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
-	return graph, nil
+	// Validate the farm structure
+	if err := validateFarm(farm); err != nil {
+		return nil, err
+	}
+
+	return farm, nil
 }
 
-// parseRoom parses a room line and creates a Room struct
-func parseRoom(line string, isStart, isEnd bool) (*Room, error) {
+// parseRoom parses a room definition line
+func parseRoom(farm *Graph, line string, isStart, isEnd bool) error {
 	parts := strings.Fields(line)
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("ERROR: invalid data format, invalid room format: %s", line)
+		return fmt.Errorf("%w: %s", ErrInvalidRoomFormat, line)
 	}
 
 	name := parts[0]
-	
-	// Validate room name
-	if err := validateRoomName(name); err != nil {
-		return nil, err
+	// Room names can't start with 'L' or '#'
+	if strings.HasPrefix(name, "L") || strings.HasPrefix(name, "#") {
+		return fmt.Errorf("%w: room name can't start with 'L' or '#'", ErrInvalidRoomFormat)
 	}
 
-	// Parse coordinates
 	x, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: invalid data format, invalid x coordinate: %s", parts[1])
+		return fmt.Errorf("%w: invalid x coordinate", ErrInvalidRoomFormat)
 	}
 
 	y, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: invalid data format, invalid y coordinate: %s", parts[2])
+		return fmt.Errorf("%w: invalid y coordinate", ErrInvalidRoomFormat)
 	}
 
-	return &Room{
-		Id:           name,
-		Links:        make(map[string]*Room),
-		IsStart:      isStart,
-		IsEnd:        isEnd,
-		Visited:      false,
-		X:            x,
-		Y:            y,
-	}, nil
-}
-
-// validateRoomName checks if room name follows the rules
-func validateRoomName(name string) error {
-	if name == "" {
-		return fmt.Errorf("ERROR: invalid data format, empty room name")
+	// Check for duplicate room names
+	if _, exists := farm.Rooms[name]; exists {
+		return fmt.Errorf("%w: %s", ErrDuplicateRoom, name)
 	}
-	
-	// Room cannot start with 'L'
-	if strings.HasPrefix(name, "L") {
-		return fmt.Errorf("ERROR: invalid data format, room name cannot start with 'L': %s", name)
+
+	room := &Room{
+		Id:        name,
+		X:           x,
+		Y:           y,
+		IsStart:     isStart,
+		IsEnd:       isEnd,
+		Links: map[string]*Room{},
 	}
-	
-	// Room cannot start with '#'
-	if strings.HasPrefix(name, "#") {
-		return fmt.Errorf("ERROR: invalid data format, room name cannot start with '#': %s", name)
+
+	farm.Rooms[name] = room
+
+	if isStart {
+		farm.StartRoom = room
 	}
-	
-	// Room cannot contain spaces
-	if strings.Contains(name, " ") {
-		return fmt.Errorf("ERROR: invalid data format, room name cannot contain spaces: %s", name)
-	}
-	
-	return nil
-}
-
-// processLinks creates connections between rooms
-func processLinks(graph *Graph, links []string) error {
-	for _, link := range links {
-		parts := strings.Split(link, "-")
-		if len(parts) != 2 {
-			return fmt.Errorf("ERROR: invalid data format, invalid link format: %s", link)
-		}
-
-		room1Name := strings.TrimSpace(parts[0])
-		room2Name := strings.TrimSpace(parts[1])
-
-		// Get rooms
-		room1, exists1 := graph.Rooms[room1Name]
-		if !exists1 {
-			return fmt.Errorf("ERROR: invalid data format, unknown room in link: %s", room1Name)
-		}
-
-		room2, exists2 := graph.Rooms[room2Name]
-		if !exists2 {
-			return fmt.Errorf("ERROR: invalid data format, unknown room in link: %s", room2Name)
-		}
-
-		// Check for self-links
-		if room1 == room2 {
-			return fmt.Errorf("ERROR: invalid data format, room cannot link to itself: %s", room1Name)
-		}
-
-		// Check for duplicate links
-		if isAlreadyLinked(room1, room2) {
-			return fmt.Errorf("ERROR: invalid data format, duplicate link: %s-%s", room1Name, room2Name)
-		}
-
-		// Create bidirectional link
-		room1.Links[room2.Id] = room2
-		room2.Links[room1.Id] = room1
-
-		// Update LinksToRm map
-		graph.Rooms[room1.Id] = room1
-		graph.Rooms[room2.Id] = room2
+	if isEnd {
+		farm.EndRoom = room
 	}
 
 	return nil
 }
 
-// isAlreadyLinked checks if two rooms are already connected
-func isAlreadyLinked(room1, room2 *Room) bool {
-	for _, link := range room1.Links {
-		if link == room2 {
-			return true
-		}
+// parseLink parses a link definition line
+func parseLink(farm *Graph, line string) error {
+	parts := strings.Split(line, "-")
+	if len(parts) != 2 {
+		return fmt.Errorf("%w: %s", ErrInvalidLinkFormat, line)
 	}
-	return false
-}
 
-// ValidateGraph performs final validation on the parsed graph
-func ValidateGraph(graph *Graph) error {
-	// Check if there's at least one path from start to end
-	if !HasPathToEnd(graph) {
-		return fmt.Errorf("ERROR: invalid data format, no path from start to end")
+	room1Name := parts[0]
+	room2Name := parts[1]
+
+	room1, exists1 := farm.Rooms[room1Name]
+	if !exists1 {
+		return fmt.Errorf("%w: %s", ErrRoomNotFound, room1Name)
 	}
-	
+
+	room2, exists2 := farm.Rooms[room2Name]
+	if !exists2 {
+		return fmt.Errorf("%w: %s", ErrRoomNotFound, room2Name)
+	}
+
+	// Add the connection in both directions (undirected graph)
+	room1.Links[room2Name] = room2
+	room2.Links[room1Name] = room1
+
 	return nil
 }
 
-// hasPathToEnd performs a simple BFS to check if end is reachable from start
-func HasPathToEnd(graph *Graph) bool {
-	if graph.StartRoom == nil || graph.EndRoom == nil {
-		return false
+// validateFarm ensures the farm structure is valid
+func validateFarm(farm *Graph) error {
+	if farm.StartRoom == nil {
+		return ErrMissingStartRoom
+	}
+	if farm.EndRoom == nil {
+		return ErrMissingEndRoom
 	}
 
-	// Reset visited status
-	for _, room := range graph.Rooms {
-		room.Visited = false
-	}
-
-	queue := []*Room{graph.StartRoom}
-	graph.StartRoom.Visited = true
+	// ✅ New: Check if a path exists from start to end using BFS
+	visited := make(map[string]bool)
+	queue := []*Room{farm.StartRoom}
 
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
 
-		if current == graph.EndRoom {
-			for _, room := range graph.Rooms {
-				room.Visited = false
-			}
-			return true
+		if current == farm.EndRoom {
+			return nil // ✅ Path exists
 		}
 
 		for _, neighbor := range current.Links {
-			if !neighbor.Visited {
-				neighbor.Visited = true
+			if !visited[neighbor.Id] {
+				visited[neighbor.Id] = true
 				queue = append(queue, neighbor)
 			}
 		}
 	}
-	for _, room := range graph.Rooms {
-		room.Visited = false
-	}
 
-	return false
-}
-
-// PrintOriginalInput prints the original input format (for output display)
-func PrintOriginalInput(graph *Graph, originalLines []string) {
-	for _, line := range originalLines {
-		fmt.Println(line)
-	}
-	fmt.Println() // Empty line before ant movements
-}
-
-// ReadOriginalLines reads the file and keeps original lines for output
-func ReadOriginalLines(filename string) ([]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	return lines, scanner.Err()
+	// If we finish BFS without finding EndRoom
+	return ErrNoPathExists
 }

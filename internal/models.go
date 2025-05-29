@@ -20,6 +20,7 @@ type Graph struct {
 	StartRoom, EndRoom *Room 
 	Paths []*Path
 	AntCount int
+	File []string
 }
 
 type Path struct {
