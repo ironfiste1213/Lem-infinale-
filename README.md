@@ -17,9 +17,6 @@ This project is a Go program that simulates ants moving through a graph represen
 .
 ├── README.md                # Project documentation
 ├── go.mod                   # Go module definition
-├── main.go                  # Main entry point of the program
-├── models.go                # Data models used in the project
-├── output.go                # Output handling and simulation printing
 ├── cmd/                     # Additional commands or utilities
 │   ├── b                   # Possibly a command or utility
 │   ├── main.go              # Alternative main or command entry
