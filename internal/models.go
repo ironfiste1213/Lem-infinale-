@@ -13,6 +13,7 @@ type Room struct {
 	AllowToJump bool
 	CameFromBacktraking bool
     Forclinks  []string
+	Allreadypathfound bool
 }
 
 type Graph struct {

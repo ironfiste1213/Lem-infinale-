@@ -64,14 +64,14 @@ func (g *Graph) Copy() *Graph {
 			IsEnd:               room.IsEnd,
 			Links:               make(map[string]*Room),
 			Visited:             false,
-			Parent:              nil, 
+			Parent:              nil,
 			Usedinpath:          false,
 			X:                   room.X,
 			Y:                   room.Y,
 			AllowToJump:         false,
 			CameFromBacktraking: false,
 			Forclinks:           nil,
-			ParentInbfs: nil,
+			ParentInbfs:         nil,
 		}
 		newGraph.Rooms[roomID] = newRoom
 	}
@@ -204,6 +204,9 @@ func (g *Graph) Bfs() (*Path, []string) {
 			}
 		}
 		for _, neighbor := range current.Links {
+			if current == g.EndRoom && neighbor == g.EndRoom && g.StartRoom.Allreadypathfound {
+				continue
+			}
 			if neighbor.Usedinpath && neighbor.Parent == g.StartRoom {
 				continue
 			}
@@ -224,16 +227,15 @@ func (g *Graph) Bfs() (*Path, []string) {
 			// Mark as visited and set parent
 			neighbor.Visited = true
 			neighbor.ParentInbfs = current
-			if current.CameFromBacktraking {
-				neighbor.CameFromBacktraking = true
-				neighbor.Forclinks = current.Forclinks
-			}
-			// Found the end room - reconstruct and return path
+			neighbor.CameFromBacktraking = current.CameFromBacktraking
+			neighbor.Forclinks = current.Forclinks
 			if neighbor == g.EndRoom {
-
-				path, links := g.reconstructPath(g.EndRoom)
-				g.EndRoom.ParentInbfs = current
-				return path, links
+				if neighbor.CameFromBacktraking {
+					return nil, neighbor.Forclinks
+				}
+				path := g.reconstructPath(g.EndRoom)
+				//	g.EndRoom.ParentInbfs = current
+				return path, nil
 			}
 			// Add to queue for further exploration
 
@@ -246,18 +248,12 @@ func (g *Graph) Bfs() (*Path, []string) {
 }
 
 // reconstructPath builds the path from start to end using parent pointers
-func (g *Graph) reconstructPath(endRoom *Room) (*Path, []string) {
+func (g *Graph) reconstructPath(endRoom *Room) *Path {
 	var rooms []*Room
-
-	if endRoom.CameFromBacktraking {
-		return nil, endRoom.Forclinks
-	}
 	// Backtrack from end to start
 	current := endRoom
-	
-
 	for current != nil {
-		if current != g.StartRoom && current != g.EndRoom {
+		if current != g.EndRoom && current != g.StartRoom {
 			current.Usedinpath = true
 			current.Parent = current.ParentInbfs
 		}
@@ -265,10 +261,13 @@ func (g *Graph) reconstructPath(endRoom *Room) (*Path, []string) {
 		current = current.ParentInbfs
 	}
 	path := &Path{
-		Rooms:                   rooms,
-		Len:                     len(rooms) - 1, // Number of edges
+		Rooms: rooms,
+		Len:   len(rooms) - 1, // Number of edges
 	}
-	return path,  nil
+	if path.Len == 2 {
+		g.StartRoom.Allreadypathfound = true
+	}
+	return path
 
 }
 
@@ -282,6 +281,9 @@ func (g *Graph) resetVisited() {
 		Room.Visited = false
 		if !Room.Usedinpath {
 			Room.Parent = nil
+		}
+		if Room == g.EndRoom || Room == g.StartRoom {
+			Room.Usedinpath = false
 		}
 	}
 }
