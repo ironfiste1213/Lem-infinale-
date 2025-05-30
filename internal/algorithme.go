@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 )
+
 func FindBestGroup(antCount int, ALLgROUPS [][]*Path) []*Path {
 
 	var bestGroup []*Path
@@ -19,6 +20,7 @@ func FindBestGroup(antCount int, ALLgROUPS [][]*Path) []*Path {
 
 	return bestGroup
 }
+
 func calculateTurns(antCount int, paths []*Path) int {
 	if len(paths) == 0 {
 		return 1e9 // big number
@@ -61,17 +63,16 @@ func (g *Graph) Copy() *Graph {
 			IsStart:             room.IsStart,
 			IsEnd:               room.IsEnd,
 			Links:               make(map[string]*Room),
-			Visited:             room.Visited,
-			Parent:              nil, // Will be set later if needed
-			Usedinpath:          room.Usedinpath,
+			Visited:             false,
+			Parent:              nil, 
+			Usedinpath:          false,
 			X:                   room.X,
 			Y:                   room.Y,
-			AllowToJump:         room.AllowToJump,
-			CameFromBacktraking: room.CameFromBacktraking,
-			Blocked:             room.Blocked,
-			Forclinks:           make([]string, len(room.Forclinks)),
+			AllowToJump:         false,
+			CameFromBacktraking: false,
+			Forclinks:           nil,
+			ParentInbfs: nil,
 		}
-		copy(newRoom.Forclinks, room.Forclinks)
 		newGraph.Rooms[roomID] = newRoom
 	}
 
@@ -118,7 +119,6 @@ func FindAllGroupsOfPath(g *Graph) [][]*Path {
 			if link != nil {
 				RoomOne := link[0]
 				Roomtow := link[1]
-				// fmt.Println("links remove : ", RoomOne, Roomtow)
 				CopyGraph.RemoveLinks(RoomOne, Roomtow)
 			}
 		}
@@ -138,31 +138,21 @@ func FindAllGroupsOfPath(g *Graph) [][]*Path {
 		if links == nil {
 			return groupsofgroups
 		}
-
-		//   fmt.Println("done")
 	}
 }
-
-// bfs should look for path if it reach a room that allready used in path go trowt parent of this room after that it can jump
-// if we reach the end trout a path that have room allready used backtarkingpath it should delet the link
 func FindGroupOfDisjointPath(g *Graph) ([]*Path, []string) {
 	GroupOfDisjointPath := []*Path{}
-	FirstRound := true
 	for {
-		Path, links := g.Bfs(FirstRound)
-		if links != nil {
-			return GroupOfDisjointPath, links
+		Path, links := g.Bfs()
+		if Path != nil && Path.Len != 2 {
+			if links != nil {
+				return GroupOfDisjointPath, links
+			}
 		}
 		if Path == nil {
 			return GroupOfDisjointPath, links
 		}
-		//(Path.Rooms)
-		//for _, room := range Path.Rooms {
-		//fmt.Print("-->", room.Id)
-		//}
-		//("---------------------------------------------------------------------------")
 		GroupOfDisjointPath = append(GroupOfDisjointPath, Path)
-		FirstRound = false
 	}
 
 }
@@ -182,50 +172,39 @@ func (g *Graph) RemoveLinks(RoomOne, RoomTwo string) {
 	//fmt.Println("Remove ", RoomOne, " from", RoomTwo, "'s links")
 }
 
-func (g *Graph) Bfs(FirstRound bool) (*Path, []string) {
+func (g *Graph) Bfs() (*Path, []string) {
 	// Initialize: reset all rooms to unvisited
-	g.resetVisited(FirstRound)
-
-	// Track parent for path reconstruction
-	parent := make(map[*Room]*Room)
-
+	g.resetVisited()
 	// BFS queue
 	queue := []*Room{g.StartRoom}
 	g.StartRoom.Visited = true
-	parent[g.StartRoom] = nil
-
-	//fmt.Printf("Starting BFS from room: %s\n", g.StartRoom.Id)
-
+	g.StartRoom.ParentInbfs = nil
 	// BFS to find shortest path
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-
-		//fmt.Printf("Exploring from room: %s\n", current.Id)
 		// Check all neighbors
-
 		if current.Usedinpath {
 			if !current.AllowToJump {
-				//("++++++++++++++++++++++++++++add as backtraking", current.Parent.Id)
 				queue = append(queue, current.Parent)
 				current.Parent.Visited = true
+				current.Visited = true
 				current.Parent.AllowToJump = true
-				parent[current] = current.Parent
-				//("add pareeeeeeeeeeeeeeeeeeeeeeeeeeeeent of ", current.Id, "toooo", current.Parent.Id)
+				current.Parent.ParentInbfs = current
 				current.CameFromBacktraking = true
 				current.Parent.CameFromBacktraking = true
-				linksforce := []string{current.Id, current.Parent.Id}
-				current.Parent.Forclinks = linksforce
+				current.Forclinks = []string{current.Id, current.Parent.Id}
+				current.Parent.Forclinks = current.Forclinks
 				continue
 			} else {
 				if current.Parent != nil {
-					current.Parent.AllowToJump = true
-
+					current.CameFromBacktraking = true
+					current.Forclinks = current.ParentInbfs.Forclinks
 				}
 			}
 		}
 		for _, neighbor := range current.Links {
-			if neighbor.Usedinpath  && neighbor.Parent == g.StartRoom {
+			if neighbor.Usedinpath && neighbor.Parent == g.StartRoom {
 				continue
 			}
 			// Skip if already visited
@@ -242,23 +221,20 @@ func (g *Graph) Bfs(FirstRound bool) (*Path, []string) {
 				continue
 			}
 
-			//	fmt.Printf(" -> Checking neighbor: %s\n", neighbor.Id)
-
 			// Mark as visited and set parent
 			neighbor.Visited = true
-			////("add pareeeeeeeeeeeeeeeeeeeeeeeeeeeeent of ",current.Id, "toooo", neighbor.Id )
-			parent[neighbor] = current
-
+			neighbor.ParentInbfs = current
+			if current.CameFromBacktraking {
+				neighbor.CameFromBacktraking = true
+				neighbor.Forclinks = current.Forclinks
+			}
 			// Found the end room - reconstruct and return path
 			if neighbor == g.EndRoom {
 
-				path, _, links := g.reconstructPath(parent, g.EndRoom)
-				//(links, "************************************")
-				//	fmt.Println("----------End ROOM Found in path isbacktraking == ", isbacktrakingpath)
-				//fmt.Printf("End room found! Reconstructing path...\n")
+				path, links := g.reconstructPath(g.EndRoom)
+				g.EndRoom.ParentInbfs = current
 				return path, links
 			}
-
 			// Add to queue for further exploration
 
 			queue = append(queue, neighbor)
@@ -270,49 +246,42 @@ func (g *Graph) Bfs(FirstRound bool) (*Path, []string) {
 }
 
 // reconstructPath builds the path from start to end using parent pointers
-func (g *Graph) reconstructPath(parent map[*Room]*Room, endRoom *Room) (*Path, bool, []string) {
+func (g *Graph) reconstructPath(endRoom *Room) (*Path, []string) {
 	var rooms []*Room
-	isbacktrakingpath := false
+
+	if endRoom.CameFromBacktraking {
+		return nil, endRoom.Forclinks
+	}
 	// Backtrack from end to start
 	current := endRoom
+	
+
 	for current != nil {
-		if current.CameFromBacktraking {
-			isbacktrakingpath = true
-			links := current.Forclinks
-			return nil, isbacktrakingpath, links
-		}
-		if current != g.StartRoom {
+		if current != g.StartRoom && current != g.EndRoom {
 			current.Usedinpath = true
-			current.Parent = parent[current]
+			current.Parent = current.ParentInbfs
 		}
 		rooms = append([]*Room{current}, rooms...) // Prepend to get correct order
-		current = parent[current]
+		current = current.ParentInbfs
 	}
-
 	path := &Path{
 		Rooms:                   rooms,
 		Len:                     len(rooms) - 1, // Number of edges
-		IsFollowingPathBackward: isbacktrakingpath,
 	}
-	for _, Room := range path.Rooms {
-		if Room.Parent != nil {
-			//fmt.Print("..................")
-			//fmt.Println("links to remov", Room.Parent.Id, "-->", Room.Id)
-			delete(Room.Parent.Links, Room.Id)
-		}
-		//fmt.Printf("Path reconstructed with %d rooms (length %d)\n", len(rooms), path.Len)
-	}
-	return path, isbacktrakingpath, nil
+	return path,  nil
+
 }
 
 // resetVisited resets all rooms to unvisited state
-func (g *Graph) resetVisited(FirstRound bool) {
+func (g *Graph) resetVisited() {
 	for _, Room := range g.Rooms {
-		Room.Visited = false
+		Room.CameFromBacktraking = false
+		Room.ParentInbfs = nil
 		Room.AllowToJump = false
+		Room.Forclinks = nil
+		Room.Visited = false
 		if !Room.Usedinpath {
 			Room.Parent = nil
 		}
-
 	}
 }

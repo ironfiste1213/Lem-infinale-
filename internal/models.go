@@ -7,11 +7,11 @@ type Room struct {
 	Links map[string]*Room
 	Visited bool
 	Parent *Room
+	ParentInbfs *Room
 	Usedinpath bool
 	X, Y int
 	AllowToJump bool
 	CameFromBacktraking bool
-	Blocked bool
     Forclinks  []string
 }
 
@@ -25,8 +25,6 @@ type Graph struct {
 
 type Path struct {
 	Rooms []*Room
-	IsFollowingPathBackward bool
-	Linksdelet []*Room
 	Len int
 }
 

@@ -67,19 +67,33 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 	waitingAnts := make([]*SimAnt, len(ants))
 	copy(waitingAnts, ants)
 
-	stepCount := 0 // Add step counter
+	stepCount := 0
 
 	for {
 		moveLine := ""
 		occupied := make(map[string]bool)
+		usedTunnels := make(map[string]bool) // Track used tunnels this turn
 
 		// Move ants already walking
 		for _, ant := range movingAnts {
 			if !ant.Finished && ant.Step < len(ant.Path)-1 {
 				nextRoom := ant.Path[ant.Step+1]
-				if nextRoom.IsEnd || !occupied[nextRoom.Id] {
+				currentRoom := ant.Path[ant.Step]
+				
+				// Create tunnel key (sorted to handle bidirectional tunnels)
+				var tunnelKey string
+				if currentRoom.Id < nextRoom.Id {
+					tunnelKey = currentRoom.Id + "-" + nextRoom.Id
+				} else {
+					tunnelKey = nextRoom.Id + "-" + currentRoom.Id
+				}
+
+				// Check if tunnel is already used this turn and next room is not occupied
+				if !usedTunnels[tunnelKey] && (nextRoom.IsEnd || !occupied[nextRoom.Id]) {
 					ant.Step++
 					moveLine += fmt.Sprintf("L%d-%s ", ant.ID, ant.Path[ant.Step].Id)
+					usedTunnels[tunnelKey] = true // Mark tunnel as used
+					
 					if nextRoom.IsEnd {
 						ant.Finished = true
 					} else {
@@ -95,10 +109,25 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 
 		for _, ant := range waitingAnts {
 			nextRoom := ant.Path[1]
-			if !occupied[nextRoom.Id] || nextRoom.IsEnd {
+			startRoom := ant.Path[0]
+			
+			// Create tunnel key for start->next move
+			var tunnelKey string
+			if startRoom.Id < nextRoom.Id {
+				tunnelKey = startRoom.Id + "-" + nextRoom.Id
+			} else {
+				tunnelKey = nextRoom.Id + "-" + startRoom.Id
+			}
+
+			// Check if tunnel is available and next room is not occupied (or is end)
+			if !usedTunnels[tunnelKey] && (!occupied[nextRoom.Id] || nextRoom.IsEnd) {
 				ant.Step = 1
 				moveLine += fmt.Sprintf("L%d-%s ", ant.ID, nextRoom.Id)
-				if !nextRoom.IsEnd {
+				usedTunnels[tunnelKey] = true // Mark tunnel as used
+				
+				if nextRoom.IsEnd {
+					ant.Finished = true
+				} else {
 					occupied[nextRoom.Id] = true
 					newMovingAnts = append(newMovingAnts, ant)
 				}
@@ -109,6 +138,7 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 
 		waitingAnts = remaining
 
+		// Add continuing ants to moving ants
 		for _, ant := range movingAnts {
 			if !ant.Finished {
 				newMovingAnts = append(newMovingAnts, ant)
@@ -119,7 +149,7 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 
 		if moveLine != "" {
 			fmt.Println(strings.TrimSpace(moveLine))
-			stepCount++ // Increment step counter when moves are made
+			stepCount++
 		}
 
 		if len(movingAnts) == 0 && len(waitingAnts) == 0 {
@@ -127,6 +157,5 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 		}
 	}
 
-	// Print the total number of steps
 	fmt.Printf("Total steps: %d\n", stepCount)
 }

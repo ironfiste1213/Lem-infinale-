@@ -4,41 +4,33 @@ import (
 	"fmt"
 	"lem-in/internal"
 	"os"
+	"time"
 )
 
 func main() {
+	t := time.Now()
+	if len(os.Args) != 2 {
+		fmt.Fprintln(os.Stderr, "Usage: go run . input.txt")
+		os.Exit(1)
+	}
 	filename := os.Args[1]
 	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Println("ERROR : CAN'T OPEN FILE!  ---> ", filename, err)
+		os.Exit(1)
+	}
+	defer file.Close()
 	Graph, err := internal.Parser(file)
 	if err != nil {
-		fmt.Println("erro get file", err)
-		return
+		fmt.Println("ERROR : INVALID DATA FORMAT! ,", err)
+		os.Exit(1)
 	}
-
 	Groupsofpaths := internal.FindAllGroupsOfPath(Graph)
-	biggroup := 0
-	for _, paths := range Groupsofpaths {
-		fmt.Println("group of pathS ,LEN() ", len(paths))
-		if biggroup < len((paths)) {
-			biggroup = len(paths)
-		}
-			for index, path := range paths {
-				fmt.Println("len of path ", index,"is ",len(path.Rooms))
-				for _, RoomsName := range path.Rooms {
-					fmt.Print(RoomsName.Id, "-->")
-				}
-				fmt.Println("")
-			}
-			fmt.Println("")
-		}
-		fmt.Println("max group of path have :", biggroup, "path")
-
-		Group := internal.FindBestGroup(Graph.AntCount, Groupsofpaths)
-		fmt.Println("best group len is ", len(Group))
-		for _, line := range Graph.File {
-			fmt.Println(line)
-		}
-		fmt.Println("")
-		internal.SimulateAntsSmart(Graph, Group)
+	Group := internal.FindBestGroup(Graph.AntCount, Groupsofpaths)
+	for _, line := range Graph.File {
+		fmt.Println(line)
 	}
-
+	fmt.Println("")
+	internal.SimulateAntsSmart(Graph, Group)
+	fmt.Println(time.Since(t))
+}
