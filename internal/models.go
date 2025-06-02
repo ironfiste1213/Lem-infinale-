@@ -14,6 +14,10 @@ type Room struct {
 	CameFromBacktraking bool
     Forclinks  []string
 	Allreadypathfound bool
+	AntInRoom *Ant
+	AntThatwilluseThisRoom []*Ant
+	IndexOfAntForNextTime int
+	Active bool
 }
 
 type Graph struct {
@@ -21,17 +25,34 @@ type Graph struct {
 	StartRoom, EndRoom *Room 
 	Paths []*Path
 	AntCount int
+	AntCountInStartRoom int
+	AntCountInEndRoom int
 	File []string
 }
 
 type Path struct {
 	Rooms []*Room
+	NumberOfAntsToHold int
+	CountAntWalking int
+	CountAntWaiting int
+	CountAntAllreadyEnterThePath int
+	CountOfAntReachTheEnd int
+	AntsInHome []*Ant
+	NextAntIdToEnterThePath *Ant
+	TheAntInTheFronT *Ant
 	Len int
+	IndexxOfreachedRoom  int
+
 }
 
 type Ant struct  {
-	Id int 
-	Path *Path
+	ID       int
+	Path     []*Room
+	Step int 
+	ActualRomm *Room
+	NextRoomToWalktIn *Room
+	walking bool
+	Finished bool
 }
 
 type Linkstodelet struct {

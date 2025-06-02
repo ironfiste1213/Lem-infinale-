@@ -13,6 +13,114 @@ type SimAnt struct {
 	Finished bool
 }
 
+func AntsToPaths(farm *Graph) {
+	AntCount := farm.AntCount
+	for AntCount > 0 {
+		bestIdx := 0
+		minCost := farm.Paths[0].NumberOfAntsToHold + farm.Paths[0].Len
+		for i := 1; i < len(farm.Paths); i++ {
+			cost := farm.Paths[i].NumberOfAntsToHold + farm.Paths[i].Len
+			if cost < minCost {
+				minCost = cost
+				bestIdx = i
+			}
+		}
+		farm.Paths[bestIdx].NumberOfAntsToHold++
+		AntCount--
+	}
+	AntCount = farm.AntCount
+
+	antsPerPath := make([]int, len(farm.Paths))
+	AntId := 1
+	for AntCount > 0 {
+		for index, path := range farm.Paths {
+			if antsPerPath[index] < path.NumberOfAntsToHold {
+				ant := &Ant{
+					ID:         AntId,
+					Path:       path.Rooms,
+					ActualRomm: farm.StartRoom,
+				}
+				path.AntsInHome = append(path.AntsInHome, ant)
+				antsPerPath[index]++
+				AntId++
+				AntCount--
+			}
+		}
+	}
+	// for _, path := range farm.Paths {
+	// 	fmt.Println("path len : ", path.Len, "has ", path.NumberOfAntsToHold, " Ants")
+	// }
+}
+func TheWalkingDead(farm *Graph) {
+	for _, path := range farm.Paths {
+		path.CountAntWaiting = path.NumberOfAntsToHold
+		path.IndexxOfreachedRoom = 0
+		
+
+	}
+	for i:=0; i<6; i++ {
+		for _, path := range farm.Paths {
+			//fmt.Println(farm.EndRoom.Id)
+			//fmt.Println(path.AntsInHome[0].ID)
+			if path.CountOfAntReachTheEnd < path.NumberOfAntsToHold {
+				if path.Len == 1 {
+				//	fmt.Println("L", path.AntsInHome[path.CountAntAllreadyEnterThePath].ID, "-", farm.EndRoom.Id)
+					path.CountOfAntReachTheEnd++
+					path.CountAntWaiting--
+					farm.AntCount--
+					path.CountAntAllreadyEnterThePath++
+					continue
+				}
+				if path.Len >= path.IndexxOfreachedRoom {
+				//	fmt.Print("fffff")
+				
+					path.Rooms[path.IndexxOfreachedRoom].Active = true
+					fmt.Println(path.Rooms[path.IndexxOfreachedRoom].Id, "<-------")
+					path.Rooms[path.IndexxOfreachedRoom].IndexOfAntForNextTime = 0
+				//	fmt.Println(path.Len, "------------", path.IndexxOfreachedRoom)
+
+				}else {
+					path.Rooms[path.Len].Active = true
+					fmt.Println(path.Rooms[path.Len].Id, "end")
+				}
+				for _, Room := range path.Rooms {
+					if Room.Id == farm.StartRoom.Id {
+						continue
+					}
+					
+					if Room.Active {
+						if Room.Id == farm.EndRoom.Id {
+							fmt.Println("*********")
+						}
+						fmt.Println("active Room : ", Room.Id)
+						if Room == farm.StartRoom {
+							path.CountAntAllreadyEnterThePath++
+						}
+					//	fmt.Println(path.Len, "------------", path.IndexxOfreachedRoom)
+
+						fmt.Println("L", path.AntsInHome[Room.IndexOfAntForNextTime].ID, "-", Room.Id," ")
+						if Room == farm.EndRoom {
+							//fmt.Println("*******")
+							path.CountOfAntReachTheEnd++
+							farm.AntCount--
+						}
+						if Room.IndexOfAntForNextTime+1 < path.NumberOfAntsToHold {
+							Room.IndexOfAntForNextTime++
+						} else {
+							Room.Active = false
+						}
+					}
+				}
+
+			}
+			path.IndexxOfreachedRoom++
+		}
+		fmt.Println("")
+		
+		
+	}
+
+}
 func assignAntsSmart(farm *Graph, paths []*Path) []*SimAnt {
 	sort.Slice(paths, func(i, j int) bool {
 		return paths[i].Len < paths[j].Len
@@ -28,6 +136,7 @@ func assignAntsSmart(farm *Graph, paths []*Path) []*SimAnt {
 
 		for i := 1; i < len(paths); i++ {
 			cost := antsPerPath[i] + paths[i].Len
+
 			if cost < minCost {
 				minCost = cost
 				bestIdx = i
@@ -79,7 +188,7 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 			if !ant.Finished && ant.Step < len(ant.Path)-1 {
 				nextRoom := ant.Path[ant.Step+1]
 				currentRoom := ant.Path[ant.Step]
-				
+
 				// Create tunnel key (sorted to handle bidirectional tunnels)
 				var tunnelKey string
 				if currentRoom.Id < nextRoom.Id {
@@ -93,7 +202,7 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 					ant.Step++
 					moveLine += fmt.Sprintf("L%d-%s ", ant.ID, ant.Path[ant.Step].Id)
 					usedTunnels[tunnelKey] = true // Mark tunnel as used
-					
+
 					if nextRoom.IsEnd {
 						ant.Finished = true
 					} else {
@@ -110,7 +219,7 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 		for _, ant := range waitingAnts {
 			nextRoom := ant.Path[1]
 			startRoom := ant.Path[0]
-			
+
 			// Create tunnel key for start->next move
 			var tunnelKey string
 			if startRoom.Id < nextRoom.Id {
@@ -124,7 +233,7 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 				ant.Step = 1
 				moveLine += fmt.Sprintf("L%d-%s ", ant.ID, nextRoom.Id)
 				usedTunnels[tunnelKey] = true // Mark tunnel as used
-				
+
 				if nextRoom.IsEnd {
 					ant.Finished = true
 				} else {
@@ -157,5 +266,5 @@ func SimulateAntsSmart(farm *Graph, paths []*Path) {
 		}
 	}
 
-	fmt.Printf("Total steps: %d\n", stepCount)
+	//fmt.Printf("Total steps: %d\n", stepCount)
 }

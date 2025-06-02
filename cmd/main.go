@@ -26,11 +26,23 @@ func main() {
 		os.Exit(1)
 	}
 	Groupsofpaths := internal.FindAllGroupsOfPath(Graph)
-	Group := internal.FindBestGroup(Graph.AntCount, Groupsofpaths)
-	for _, line := range Graph.File {
-		fmt.Println(line)
-	}
-	fmt.Println("")
-	internal.SimulateAntsSmart(Graph, Group)
+	// for _, group := range Groupsofpaths {
+	// 	fmt.Println("group :")
+	// 	for _, path := range group {
+	// 		for _, Romm := range path.Rooms {
+	// 			fmt.Print("-->", Romm.Id)
+	// 		}
+	// 		fmt.Println("")
+	// 	}
+	// }
+    internal.FindBestGroup(Groupsofpaths, Graph)
+	internal.AntsToPaths(Graph)
+	internal.TheWalkingDead(Graph)
+	
+	// for _, line := range Graph.File {
+	// 	fmt.Println(line)
+	// }
+	// fmt.Println("")
+	// internal.SimulateAntsSmart(Graph, Graph.Paths)
 	fmt.Println(time.Since(t))
 }

@@ -5,20 +5,23 @@ import (
 	"sort"
 )
 
-func FindBestGroup(antCount int, ALLgROUPS [][]*Path) []*Path {
+func FindBestGroup( ALLgROUPS [][]*Path, farm *Graph) {
 
-	var bestGroup []*Path
+	
 	bestTurns := 1e9
 
 	for _, group := range ALLgROUPS {
-		turns := calculateTurns(antCount, group)
+		turns := calculateTurns(farm.AntCount, group)
 		if float64(turns) < bestTurns {
 			bestTurns = float64(turns)
-			bestGroup = group
+			farm.Paths = group
 		}
 	}
+	sort.Slice(farm.Paths, func(i, j int) bool {
+		return farm.Paths[i].Len < farm.Paths[j].Len
+	})
 
-	return bestGroup
+	
 }
 
 func calculateTurns(antCount int, paths []*Path) int {
@@ -119,11 +122,13 @@ func FindAllGroupsOfPath(g *Graph) [][]*Path {
 			if link != nil {
 				RoomOne := link[0]
 				Roomtow := link[1]
+			
 				CopyGraph.RemoveLinks(RoomOne, Roomtow)
 			}
 		}
 
 		Paths, links := FindGroupOfDisjointPath(CopyGraph)
+		fmt.Println("group")
 		if len(Paths) == 0 {
 			return groupsofgroups
 		}
@@ -144,7 +149,7 @@ func FindGroupOfDisjointPath(g *Graph) ([]*Path, []string) {
 	GroupOfDisjointPath := []*Path{}
 	for {
 		Path, links := g.Bfs()
-		if Path != nil && Path.Len != 2 {
+		if Path != nil && Path.Len != 1 {
 			if links != nil {
 				return GroupOfDisjointPath, links
 			}
@@ -153,6 +158,7 @@ func FindGroupOfDisjointPath(g *Graph) ([]*Path, []string) {
 			return GroupOfDisjointPath, links
 		}
 		GroupOfDisjointPath = append(GroupOfDisjointPath, Path)
+
 	}
 
 }
@@ -160,6 +166,7 @@ func FindGroupOfDisjointPath(g *Graph) ([]*Path, []string) {
 func (g *Graph) RemoveLinks(RoomOne, RoomTwo string) {
 	room1, ok1 := g.Rooms[RoomOne]
 	room2, ok2 := g.Rooms[RoomTwo]
+	
 
 	if !ok1 || !ok2 {
 		fmt.Println("Error: One or both rooms not found in graph")
@@ -203,8 +210,8 @@ func (g *Graph) Bfs() (*Path, []string) {
 				}
 			}
 		}
-		for _, neighbor := range current.Links {
-			if current == g.EndRoom && neighbor == g.EndRoom && g.StartRoom.Allreadypathfound {
+       	for _, neighbor := range current.Links {
+			if current == g.StartRoom && neighbor == g.EndRoom && g.StartRoom.Allreadypathfound {
 				continue
 			}
 			if neighbor.Usedinpath && neighbor.Parent == g.StartRoom {
@@ -264,7 +271,8 @@ func (g *Graph) reconstructPath(endRoom *Room) *Path {
 		Rooms: rooms,
 		Len:   len(rooms) - 1, // Number of edges
 	}
-	if path.Len == 2 {
+	if path.Len == 1 {
+		
 		g.StartRoom.Allreadypathfound = true
 	}
 	return path
